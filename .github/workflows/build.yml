@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           codesign --verify --strict dist/AIbar.app
-          lipo -verify_arch '${{ matrix.arch }}' dist/AIbar.app/Contents/MacOS/AIbar
+          lipo dist/AIbar.app/Contents/MacOS/AIbar -verify_arch '${{ matrix.arch }}'
           ditto -c -k --sequesterRsrc --keepParent dist/AIbar.app "dist/AIbar-${AIBAR_VERSION}-${{ matrix.arch }}.zip"
           cd dist
           shasum -a 256 "AIbar-${AIBAR_VERSION}-${{ matrix.arch }}.zip" > "AIbar-${AIBAR_VERSION}-${{ matrix.arch }}.zip.sha256"
