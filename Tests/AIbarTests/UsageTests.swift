@@ -127,7 +127,20 @@ Gemini 4 Argon\tGemini 4 Argon Weekly Limit\t78%\t2026-11-21T13:22:17Z
 
 @Test(.enabled(if: ProcessInfo.processInfo.environment["AIBAR_LIVE_AGY"] == "1"))
 func liveAGYQuery() async throws {
-    let result = try await AGYClient.fetch()
+    let result = try await AGYClient.fetch(workspacePath: FileManager.default.currentDirectoryPath)
     #expect(result.windows.count == 5)
     #expect(result.windows.allSatisfy { (0...100).contains($0.used) && $0.resetsAt != nil })
+}
+
+@Test func agyRequiresLocalWorkspace() async {
+    for path: String? in [nil, "/nonexistent-aibar-workspace", "/dev/null"] {
+        do {
+            _ = try await AGYClient.fetch(workspacePath: path)
+            Issue.record("AGY must not run without an existing selected directory")
+        } catch AGYClient.QueryError.workspaceNotConfigured {
+            // Missing configuration must fail before any CLI can start.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
 }
