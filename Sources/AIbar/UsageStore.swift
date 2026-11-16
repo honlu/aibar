@@ -57,7 +57,7 @@ final class UsageStore {
             isRefreshingAGY = true
             lastAGYAttempt = .now
             do {
-                agy = try await AGYClient.fetch()
+                agy = try await AGYClient.fetch(workspacePath: UserDefaults.standard.string(forKey: "agyWorkingDirectory"))
                 agyError = nil
             } catch is CancellationError {
                 // Keep prior state on task cancellation.
@@ -85,6 +85,17 @@ final class UsageStore {
         agy = value
         agyError = nil
         onChange?()
+    }
+    func chooseAGYWorkingDirectory() {
+        let panel = NSOpenPanel()
+        panel.title = "选择已完成 agy 授权的工作目录"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            UserDefaults.standard.set(url.path, forKey: "agyWorkingDirectory")
+            Task { await refresh(forceAGY: true) }
+        }
     }
     func openWebsite() {
         if let url = URL(string: selected.website) { NSWorkspace.shared.open(url) }

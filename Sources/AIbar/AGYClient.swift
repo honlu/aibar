@@ -2,10 +2,11 @@ import Foundation
 
 enum AGYClient {
     enum QueryError: LocalizedError {
-        case notInstalled, failed
+        case notInstalled, workspaceNotConfigured, failed
         var errorDescription: String? {
             switch self {
             case .notInstalled: "未找到 agy。请先安装并在终端完成登录和项目授权。"
+            case .workspaceNotConfigured: "请在设置中选择 AGY 工作目录，并先在终端进入该目录完成 agy 登录和项目授权。"
             case .failed: "AGY 查询失败或超时。请在终端检查 agy 登录状态；上次读数已保留。"
             }
         }
@@ -38,8 +39,13 @@ enum AGYClient {
                             windows: windows, readAt: now)
     }
 
-    @concurrent static func fetch() async throws -> AccountUsage {
+    @concurrent static func fetch(workspacePath: String? = nil) async throws -> AccountUsage {
         let manager = FileManager.default
+        guard let workspacePath else { throw QueryError.workspaceNotConfigured }
+        var isDirectory: ObjCBool = false
+        guard manager.fileExists(atPath: workspacePath, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw QueryError.workspaceNotConfigured
+        }
         let candidates = ["/opt/homebrew/bin/agy", "/usr/local/bin/agy",
                           manager.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/agy").path]
         guard let path = candidates.first(where: { manager.isExecutableFile(atPath: $0) }) else {
@@ -50,10 +56,7 @@ enum AGYClient {
         process.executableURL = URL(fileURLWithPath: path)
         // /usage is a built-in command: never send a natural-language prompt or approve a trust dialog.
         process.arguments = ["--mode", "plan", "--print", "/usage", "--print-timeout", "20s"]
-        let configuredWorkspace = Bundle.main.object(forInfoDictionaryKey: "AIbarAGYWorkingDirectory") as? String
-        let workspace = configuredWorkspace.flatMap { manager.fileExists(atPath: $0) ? $0 : nil }
-            ?? manager.currentDirectoryPath
-        process.currentDirectoryURL = URL(fileURLWithPath: workspace, isDirectory: true)
+        process.currentDirectoryURL = URL(fileURLWithPath: workspacePath, isDirectory: true)
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice

@@ -182,6 +182,7 @@ struct PopoverView: View {
                 Spacer()
                 Menu {
                     Button("选择 Magpie 缓存…") { store.chooseSource() }
+                    Button("选择 AGY 工作目录…") { store.chooseAGYWorkingDirectory() }
                     Button("打开订阅页面") { store.openWebsite() }
                     Divider()
                     Button("退出 AIbar") { NSApplication.shared.terminate(nil) }
