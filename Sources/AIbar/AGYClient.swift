@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 enum AGYClient {
     enum QueryError: LocalizedError {
@@ -62,14 +63,21 @@ enum AGYClient {
         process.standardError = FileHandle.nullDevice
         try process.run()
         let timeout = DispatchWorkItem { if process.isRunning { process.terminate() } }
+        let forceStop = DispatchWorkItem {
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        }
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 30, execute: timeout)
-        defer { timeout.cancel() }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 32, execute: forceStop)
+        defer { timeout.cancel(); forceStop.cancel() }
         let data = await withTaskCancellationHandler {
             let output = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             return output
         } onCancel: {
             if process.isRunning { process.terminate() }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
         }
         try Task.checkCancellation()
         guard process.terminationStatus == 0, data.count <= 65_536,

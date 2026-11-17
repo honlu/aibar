@@ -19,7 +19,9 @@ AIbar 常驻于 macOS 顶部菜单栏，用于在一处集中查看多个 AI 编
 | 来源 | 接入方式 | 刷新行为 |
 | --- | --- | --- |
 | Codex / Kimi / MiniMax | 只读本机 Magpie 缓存 `~/.config/magpie/quotas.json` | 启动、展开面板、每 60 秒或点击「重读缓存」时读取；Magpie 负责联网更新 |
-| Antigravity / AGY | 调用本机 `agy --mode plan --print /usage --print-timeout 20s` 实时查询；支持粘贴备用 | 选中 AGY 时每 5 分钟自动查询，点击「查询额度」立即刷新；30 秒看门狗与任务取消保护 |
+| Antigravity / AGY | 调用本机 `agy --mode plan --print /usage --print-timeout 20s` 实时查询；支持粘贴备用 | 选中 AGY 时每 5 分钟自动查询；任何失败后暂停并保存状态，重启不重试；点击「恢复查询」且成功后恢复自动刷新 |
+
+> **AGY 登录提示**：仅调用 CLI 也可能由 CLI 自行打开浏览器登录。AIbar 无法保证首次认证失败时不弹页；但任何失败、超时或取消后都会暂停自动查询，重启 App、切换平台或更改工作目录也不会自动重试。请先在终端恢复登录/网络，再点击「恢复查询」。主动查询前会确认此行为；粘贴导入不启动 CLI，也不会解除暂停。
 
 > AGY 查询调用内置 `/usage` 命令，不发送自然语言提示，也不自动批准信任提示；需要本机已安装并登录 `agy`。请先在终端进入准备用于查询的目录完成 `agy` 登录和项目授权，再在齿轮菜单中点击「选择 AGY 工作目录…」。工作目录仅保存在本机，不会写入安装包；目录移动或删除后需重新选择。CLI 输出为五行 TSV（模型组、额度窗口、剩余百分比、ISO8601 重置时间），精度为整数 `1%`；粘贴导入模式保留文本中的小数，并按导入时刻估算重置时间。
 
@@ -54,7 +56,7 @@ open dist/AIbar.app
 ## 缓存与隐私
 
 - 仅读取 Magpie 额度缓存文件，不读取第三方登录凭证或 API Key；AGY 查询由本机 CLI 使用自身登录态完成。
-- 自动查询结果仅保存在内存中；选中的平台、自定义缓存路径、AGY 工作目录与 AGY 粘贴导入结果保存在本机 `UserDefaults`。
+- 自动查询结果仅保存在内存中；选中的平台、自定义缓存路径、AGY 工作目录、自动查询暂停状态与 AGY 粘贴导入结果保存在本机 `UserDefaults`。
 - 当前构建脚本使用本机 ad-hoc 签名，不含 Developer ID 公证；缓存路径按非 App Sandbox 本地应用实现，若需上架 Mac App Store 需另行配置 security-scoped bookmarks。
 
 ## 开发与测试
@@ -88,10 +90,21 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-发布前先确保版本代码已经合入默认分支。标签必须是 `v主版本.次版本.修订版本`；版本号会写入应用 Info.plist。本地可用 `AIBAR_VERSION=0.1.1 bash scripts/build-app.sh` 指定版本。
+发布前先确保版本代码已经合入默认分支。标签必须是 `v主版本.次版本.修订版本`；版本号会写入应用 Info.plist。本地可用 `AIBAR_VERSION=0.1.2 bash scripts/build-app.sh` 指定版本。
 
 CI 使用 Xcode 26.2（Swift 6.2）与 macOS 15 runner，只需 GitHub 自带的 `GITHUB_TOKEN`，不需要 Apple 证书或额外 Secrets。未包含自动更新功能，升级时下载新版并替换应用。
 
 ## 开源许可
 
 [MIT License](LICENSE)。AIbar 是独立工具，与展示的各平台无官方关联。
+
+## 应用图标
+
+应用使用与菜单栏相同的 `chart.bar.xaxis` 符号。多尺寸图标位于 `Resources/AIbar.icns`，构建时写入 `.app` 并配置 `CFBundleIconFile`。
+
+需要重新生成时，在 macOS 上运行：
+
+```sh
+swift scripts/generate-icon.swift /tmp/AIbar.iconset
+iconutil -c icns /tmp/AIbar.iconset -o Resources/AIbar.icns
+```

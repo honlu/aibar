@@ -11,9 +11,9 @@ macOS 14+，SwiftUI 内容 + AppKit NSStatusItem / NSPopover，无 Dock 图标�
 - 根对象按账户标识分组；每项含 at、quota.provider、quota.plan?、quota.windows[]、quota.readAt?。window.name 是服务端窗口名，used 是已用百分比（0…100），resetsAt 为可选 ISO8601 日期。readAt 优先于 at。
 - 只识别 codex、kimi-code-cn、minimax-cn；保留同平台多个账户，隐藏原始账户标识。百分比越界或日期无效时报错，保留上次读数并显示读取失败。15 分钟以上或已越过重置点的读数标为需更新，不能据旧读数推定额度已归零。
 - 启动、打开面板、每 60 秒和手动刷新均重读缓存；不强制 Magpie 联网刷新。读取失败不更新源时间。
-- 用户需在本机终端完成 agy 登录并授权选定目录。已移除独立 Gemini 网页订阅及手动记录入口；旧版保存的 Gemini 选中偏好迁移到 AGY。自动查询使用 `agy --mode plan --print /usage --print-timeout 20s`，工作目录由用户通过齿轮菜单选择，保存在 UserDefaults；未选择或目录不存在时提示配置，不启动 CLI，不回退到构建路径或应用启动目录，不会自动批准任何提示。CLI 自行使用其登录态联网；解析五行 TSV（组、窗口、剩余百分比、ISO8601 重置时间），已用=100−remaining。比例为 CLI 提供的整数，不能冒充小数精度；缺组、越界、日期损坏或非零退出均保留旧读数并提示。30 秒外部看门狗终止未退出的 CLI。选中 AGY 时最多每 5 分钟自动查询，按钮强制刷新。
+- 用户需在本机终端完成 agy 登录并授权选定目录。已移除独立 Gemini 网页订阅及手动记录入口；旧版保存的 Gemini 选中偏好迁移到 AGY。自动查询使用 `agy --mode plan --print /usage --print-timeout 20s`，工作目录由用户通过齿轮菜单选择，保存在 UserDefaults；未选择或目录不存在时提示配置，不启动 CLI，不回退到构建路径或应用启动目录，不会自动批准任何提示。CLI 自行使用其登录态联网；解析五行 TSV（组、窗口、剩余百分比、ISO8601 重置时间），已用=100−remaining。比例为 CLI 提供的整数，不能冒充小数精度；缺组、越界、日期损坏或非零退出均保留旧读数并提示。30 秒外部看门狗请求终止，32 秒仍未退出则强制结束 CLI；取消也会在 2 秒后强制结束。选中 AGY 时最多每 5 分钟自动查询。每次调用前先持久化暂停标记，仅查询成功才清除；任何失败、取消或应用中断后均保持暂停，保留旧读数。重启、切换平台、配置目录和粘贴导入不能解除暂停，只有用户通过确认对话框点击「恢复查询」并查询成功才恢复自动刷新。首次认证失败时 CLI 仍可能打开浏览器，不能将 print 模式或无数据等同为无交互或认证失败。
 - 支持粘贴英文 usage 输出备用：按 Gemini Models / Claude and GPT Models / Gemini 4 Argon 分组，已用=100−remaining；重置时间=导入时刻+Refreshes in 时长，界面标明估算和导入时间。缺失重置时间为未知，不推断已归零。
-- UserDefaults 仅保存所选工具、缓存文件路径、AGY 工作目录、AGY 导入解析结果；不保存原始 usage 文本，不复制第三方密钥。
+- UserDefaults 仅保存所选工具、缓存文件路径、AGY 工作目录、自动查询暂停状态、AGY 导入解析结果；不保存原始 usage 文本，不复制第三方密钥。
 
 ## 验证
 
@@ -24,3 +24,5 @@ Swift build/test 检查编译与缓存解码；构造独立样本验证 0/100/�
 ## 开源分发
 
 MIT 许可。GitHub Actions 使用 Xcode 26.2 分别测试和构建 arm64 / x86_64，生成 ad-hoc 签名的 app ZIP 和 SHA-256 校验文件；vMAJOR.MINOR.PATCH 标签触发 Release。无 Apple 证书和公证，不承诺绕过 Gatekeeper 的零提示安装。构建产物不包含本机工程路径或第三方 CLI / 凭证。
+
+应用图标：使用与菜单栏一致的 chart.bar.xaxis，Resources/AIbar.icns 包含标准多尺寸位图；构建时复制到 Contents/Resources 并设置 CFBundleIconFile，签名前完成写入。

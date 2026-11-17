@@ -144,3 +144,109 @@ func liveAGYQuery() async throws {
         }
     }
 }
+
+@MainActor @Test func agyFailurePausesAcrossRefreshAndRelaunch() async throws {
+    let failures: [any Error] = [AGYClient.QueryError.failed, URLError(.notConnectedToInternet),
+                                 UsageParser.ParseError.invalidWindow, CancellationError()]
+    for failure in failures {
+        let suite = "AIbarTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("antigravity", forKey: "selectedProvider")
+        defaults.set("/nonexistent-aibar-test-cache", forKey: "quotaPath")
+        let now = Date(timeIntervalSince1970: 10_000)
+        var attempts = 0
+        let store = UsageStore(defaults: defaults) { _ in
+            attempts += 1
+            throw failure
+        }
+        await store.refresh(at: now)
+        #expect(attempts == 1)
+        #expect(store.agyAutoRefreshPaused)
+        #expect(store.agyError != nil)
+        for minutes in [1, 5, 60, 600] {
+            await store.refresh(at: now.addingTimeInterval(Double(minutes * 60)))
+        }
+        store.selected = .codex
+        store.selected = .antigravity
+        await store.refresh(at: now.addingTimeInterval(86_400))
+        let relaunched = UsageStore(defaults: try #require(UserDefaults(suiteName: suite))) { _ in
+            attempts += 1
+            throw failure
+        }
+        await relaunched.refresh(at: now.addingTimeInterval(172_800))
+        #expect(attempts == 1)
+        #expect(relaunched.agyAutoRefreshPaused)
+        #expect(relaunched.agyError != nil)
+    }
+}
+
+@MainActor @Test func agyManualRecoveryRestoresScheduleAndKeepsLastSnapshotOnFailure() async throws {
+    let suite = "AIbarTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set("antigravity", forKey: "selectedProvider")
+    defaults.set(true, forKey: "agyAutoRefreshPaused")
+    defaults.set("/nonexistent-aibar-test-cache", forKey: "quotaPath")
+    defaults.set("/selected-workspace", forKey: "agyWorkingDirectory")
+    let now = Date(timeIntervalSince1970: 10_000)
+    let snapshot = try AGYClient.parse(printUsage, at: now)
+    var attempts = 0
+    var fail = false
+    let store = UsageStore(defaults: defaults) { workspace in
+        #expect(workspace == "/selected-workspace")
+        attempts += 1
+        if fail { throw URLError(.timedOut) }
+        return snapshot
+    }
+    await store.refresh(at: now)
+    #expect(attempts == 0)
+    await store.queryAGY(at: now)
+    #expect(attempts == 1)
+    #expect(!store.agyAutoRefreshPaused)
+    #expect(!defaults.bool(forKey: "agyAutoRefreshPaused"))
+    #expect(store.agyError == nil)
+    await store.refresh(at: now.addingTimeInterval(299))
+    #expect(attempts == 1)
+    await store.refresh(at: now.addingTimeInterval(300))
+    #expect(attempts == 2)
+    fail = true
+    await store.refresh(at: now.addingTimeInterval(600))
+    #expect(attempts == 3)
+    #expect(store.agyAutoRefreshPaused)
+    #expect(store.agy?.readAt == snapshot.readAt)
+    #expect(store.agy?.windows.map(\.used) == snapshot.windows.map(\.used))
+    await store.refresh(at: now.addingTimeInterval(900))
+    #expect(attempts == 3)
+    await store.queryAGY(at: now.addingTimeInterval(901))
+    #expect(attempts == 4)
+    #expect(store.agyAutoRefreshPaused)
+    fail = false
+    await store.queryAGY(at: now.addingTimeInterval(902))
+    #expect(attempts == 5)
+    #expect(!store.agyAutoRefreshPaused)
+}
+
+@MainActor @Test func agyInFlightQueryCannotBeDuplicated() async throws {
+    let suite = "AIbarTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set("antigravity", forKey: "selectedProvider")
+    defaults.set("/nonexistent-aibar-test-cache", forKey: "quotaPath")
+    var attempts = 0
+    var continuation: CheckedContinuation<AccountUsage, any Error>?
+    let store = UsageStore(defaults: defaults) { _ in
+        attempts += 1
+        return try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+    let first = Task { await store.queryAGY() }
+    while continuation == nil { await Task.yield() }
+    #expect(defaults.bool(forKey: "agyAutoRefreshPaused"))
+    await store.queryAGY()
+    await store.refresh(at: .distantFuture)
+    #expect(attempts == 1)
+    continuation?.resume(throwing: AGYClient.QueryError.failed)
+    await first.value
+    #expect(store.agyAutoRefreshPaused)
+    #expect(!store.isRefreshingAGY)
+}
