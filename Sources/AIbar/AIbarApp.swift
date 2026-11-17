@@ -2,9 +2,18 @@ import AppKit
 import SwiftUI
 
 @main
-struct AIbarApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    var body: some Scene { Settings { EmptyView() } }
+enum AIbarApp {
+    @MainActor
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = AppDelegate()
+        application.setActivationPolicy(.accessory)
+        application.delegate = delegate
+        // NSApplication's delegate is weak; retain it for the entire event loop.
+        withExtendedLifetime(delegate) {
+            application.run()
+        }
+    }
 }
 
 @MainActor
