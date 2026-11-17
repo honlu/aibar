@@ -36,3 +36,15 @@ PLIST
 codesign --force --sign - "$APP"
 codesign --verify --strict "$APP"
 printf 'Built %s\n' "$APP"
+
+# Package the native build. Official releases run this only on Apple Silicon.
+ARCH="$(uname -m)"
+DMG_NAME="AIbar-${VERSION}-${ARCH}.dmg"
+DMG_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/aibar-dmg.XXXXXX")"
+trap 'rm -rf "$DMG_STAGE"' EXIT
+ditto "$APP" "$DMG_STAGE/AIbar.app"
+ln -s /Applications "$DMG_STAGE/Applications"
+hdiutil create -volname AIbar -srcfolder "$DMG_STAGE" -ov -format UDZO "dist/$DMG_NAME"
+hdiutil verify "dist/$DMG_NAME"
+(cd dist && shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256")
+printf 'Packaged dist/%s\n' "$DMG_NAME"

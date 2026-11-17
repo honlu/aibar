@@ -2,7 +2,7 @@ name: Build and Release
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -12,16 +12,8 @@ permissions:
 
 jobs:
   build:
-    name: Build (${{ matrix.arch }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+    name: Build Apple Silicon DMG
+    runs-on: macos-15
     timeout-minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
@@ -31,7 +23,7 @@ jobs:
         shell: bash
         run: |
           swift --version
-          test "$(uname -m)" = '${{ matrix.arch }}'
+          test "$(uname -m)" = arm64
           version=0.1.1
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             version="${GITHUB_REF_NAME#v}"
@@ -43,22 +35,23 @@ jobs:
           echo "AIBAR_VERSION=$version" >> "$GITHUB_ENV"
       - name: Test
         run: swift test
-      - name: Build app
+      - name: Build app and DMG
         run: bash scripts/build-app.sh
-      - name: Package and verify
+      - name: Verify package
         shell: bash
         run: |
           codesign --verify --strict dist/AIbar.app
-          lipo dist/AIbar.app/Contents/MacOS/AIbar -verify_arch '${{ matrix.arch }}'
-          ditto -c -k --sequesterRsrc --keepParent dist/AIbar.app "dist/AIbar-${AIBAR_VERSION}-${{ matrix.arch }}.zip"
+          lipo dist/AIbar.app/Contents/MacOS/AIbar -verify_arch arm64
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' dist/AIbar.app/Contents/Info.plist)" = AIbar
+          test -s dist/AIbar.app/Contents/Resources/AIbar.icns
           cd dist
-          shasum -a 256 "AIbar-${AIBAR_VERSION}-${{ matrix.arch }}.zip" > "AIbar-${AIBAR_VERSION}-${{ matrix.arch }}.zip.sha256"
+          shasum -a 256 -c "AIbar-${AIBAR_VERSION}-arm64.dmg.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: AIbar-${{ matrix.arch }}
+          name: AIbar-arm64-DMG
           path: |
-            dist/*.zip
-            dist/*.sha256
+            dist/*.dmg
+            dist/*.dmg.sha256
           if-no-files-found: error
           retention-days: 14
 

@@ -14,7 +14,6 @@ extension Provider {
 struct PopoverView: View {
     @Bindable var store: UsageStore
     @State private var importingAGY = false
-    @State private var confirmingAGYQuery = false
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -49,12 +48,7 @@ struct PopoverView: View {
             .frame(width: 480, height: 660)
             .background(.regularMaterial)
             .sheet(isPresented: $importingAGY) { AGYImportView(store: store) }
-            .alert("查询 AGY 额度？", isPresented: $confirmingAGYQuery) {
-                Button("取消", role: .cancel) { }
-                Button("查询") { Task { await store.queryAGY() } }
-            } message: {
-                Text("将调用本机 agy。登录失效时，CLI 可能打开浏览器要求登录。查询成功后恢复每 5 分钟自动刷新；任何失败会暂停自动查询。也可以取消并粘贴 usage 输出。")
-            }
+
         }
     }
 
@@ -170,12 +164,22 @@ struct PopoverView: View {
             Image(systemName: store.selected.symbol).font(.system(size: 30)).foregroundStyle(store.selected.tint)
             Text("尚无 \(store.selected.name) 读数")
                 .font(.headline)
-            Text(store.selected == .antigravity ? "请先在终端完成 agy 登录并选择工作目录。查询失败会暂停自动刷新；也可直接粘贴 usage 输出。"
+            Text(store.selected == .antigravity ? "点击「检查 AGY 用量」，AIbar 会自动调用本机 agy 查询。首次需要选择工作目录；若 CLI 要求登录，再完成认证。"
                  : "请先在 Magpie 中刷新此订阅的额度。AIbar 会读取本机缓存。")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("打开 \(store.selected.name)", systemImage: "arrow.up.right") { store.openWebsite() }
-                .buttonStyle(.bordered)
+            if store.selected == .antigravity {
+                Button("检查 AGY 用量", systemImage: "arrow.clockwise") { checkAGYUsage() }
+                    .buttonStyle(.bordered).disabled(store.isRefreshingAGY)
+            } else {
+                Button("打开 \(store.selected.name)", systemImage: "arrow.up.right") { store.openWebsite() }
+                    .buttonStyle(.bordered)
+            }
         }.padding(.vertical, 26).padding(.horizontal, 22).frame(maxWidth: .infinity)
+    }
+
+    private func checkAGYUsage() {
+        if !store.hasAGYWorkingDirectory && !store.chooseAGYWorkingDirectory() { return }
+        Task { await store.queryAGY() }
     }
 
     private var footer: some View {
@@ -185,12 +189,12 @@ struct PopoverView: View {
             HStack {
                 Button {
                     if store.selected == .antigravity {
-                        confirmingAGYQuery = true
+                        checkAGYUsage()
                     } else {
                         Task { await store.refresh() }
                     }
                 } label: {
-                    Label(store.isRefreshing ? "读取中…" : store.selected == .antigravity ? (store.agyAutoRefreshPaused ? "恢复查询" : "查询额度") : "重读缓存", systemImage: "arrow.clockwise")
+                    Label(store.isRefreshing ? "读取中…" : store.selected == .antigravity ? "检查 AGY 用量" : "重读缓存", systemImage: "arrow.clockwise")
                 }.disabled(store.isRefreshing).help("AGY 可能要求浏览器登录；失败后暂停自动查询，成功后每 5 分钟刷新")
                 Spacer()
                 Menu {

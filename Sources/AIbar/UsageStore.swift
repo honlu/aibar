@@ -41,7 +41,7 @@ final class UsageStore {
         selected = savedProvider == "gemini" ? .antigravity : Provider(rawValue: savedProvider) ?? .codex
         defaults.set(selected.rawValue, forKey: "selectedProvider")
         if agyAutoRefreshPaused {
-            agyError = "AGY 自动查询已暂停。请在终端恢复登录或网络后，点击「恢复查询」。"
+            agyError = "AGY 自动查询已暂停。点击「检查 AGY 用量」重新检查；若提示登录再完成认证。"
         }
         if let data = defaults.data(forKey: "agyImport") {
             agy = try? JSONDecoder().decode(AccountUsage.self, from: data)
@@ -82,11 +82,11 @@ final class UsageStore {
             agyError = nil
             agyAutoRefreshPaused = false
         } catch is CancellationError {
-            agyError = "AGY 查询已取消，自动查询已暂停。点击「恢复查询」重试。"
+            agyError = "AGY 查询已取消，自动查询已暂停。点击「检查 AGY 用量」重试。"
         } catch {
             agyError = ((error as? AGYClient.QueryError)?.errorDescription
                         ?? "AGY 用量格式无法识别，上次读数已保留。")
-                + " 自动查询已暂停，请检查登录和网络后点击「恢复查询」。"
+                + " 自动查询已暂停，可点击「检查 AGY 用量」重试。"
         }
     }
     func chooseSource() {
@@ -107,16 +107,23 @@ final class UsageStore {
         agyError = nil
         onChange?()
     }
-    func chooseAGYWorkingDirectory() {
+    var hasAGYWorkingDirectory: Bool {
+        guard let path = defaults.string(forKey: "agyWorkingDirectory") else { return false }
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+    @discardableResult func chooseAGYWorkingDirectory() -> Bool {
         let panel = NSOpenPanel()
-        panel.title = "选择已完成 agy 授权的工作目录"
+        panel.title = "选择 AGY 工作目录"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
             defaults.set(url.path, forKey: "agyWorkingDirectory")
             // Choosing a directory must not clear a previous failure or trigger authentication.
+            return true
         }
+        return false
     }
     func openWebsite() {
         if let url = URL(string: selected.website) { NSWorkspace.shared.open(url) }
