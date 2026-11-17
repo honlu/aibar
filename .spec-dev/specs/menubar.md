@@ -1,6 +1,7 @@
 # AIbar 菜单栏用量
 
 macOS 14+，SwiftUI 内容 + AppKit NSStatusItem / NSPopover，无 Dock 图标。
+由 AppKit 管理应用生命周期，不注册占位 Settings 窗口；普通启动及再次打开应用均不弹出空白窗口，点击菜单栏图标打开面板，`--show` 启动参数可直接展开面板。
 工具为 Codex、AGY、Magpie Kimi / MiniMax Coding Plan；Gemini 模型组统一由 AGY 展示。
 
 面板展开期间冻结 NSStatusItem 标题和宽度；切换工具及异步刷新仅更新面板内容，关闭面板后再显示最新菜单栏标题。避免全屏自动隐藏菜单栏中，状态按钮重排使 NSPopover 锚点失效。
