@@ -48,6 +48,7 @@ struct PopoverView: View {
             .frame(width: 480, height: 660)
             .background(.regularMaterial)
             .sheet(isPresented: $importingAGY) { AGYImportView(store: store) }
+
         }
     }
 
@@ -163,22 +164,38 @@ struct PopoverView: View {
             Image(systemName: store.selected.symbol).font(.system(size: 30)).foregroundStyle(store.selected.tint)
             Text("尚无 \(store.selected.name) 读数")
                 .font(.headline)
-            Text(store.selected == .antigravity ? "正在尝试查询 agy 用量。请先在终端完成 agy 登录；也可粘贴 usage 输出作为备用。"
+            Text(store.selected == .antigravity ? "点击「检查 AGY 用量」，AIbar 会自动调用本机 agy 查询。首次需要选择工作目录；若 CLI 要求登录，再完成认证。"
                  : "请先在 Magpie 中刷新此订阅的额度。AIbar 会读取本机缓存。")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("打开 \(store.selected.name)", systemImage: "arrow.up.right") { store.openWebsite() }
-                .buttonStyle(.bordered)
+            if store.selected == .antigravity {
+                Button("检查 AGY 用量", systemImage: "arrow.clockwise") { checkAGYUsage() }
+                    .buttonStyle(.bordered).disabled(store.isRefreshingAGY)
+            } else {
+                Button("打开 \(store.selected.name)", systemImage: "arrow.up.right") { store.openWebsite() }
+                    .buttonStyle(.bordered)
+            }
         }.padding(.vertical, 26).padding(.horizontal, 22).frame(maxWidth: .infinity)
+    }
+
+    private func checkAGYUsage() {
+        if !store.hasAGYWorkingDirectory && !store.chooseAGYWorkingDirectory() { return }
+        Task { await store.queryAGY() }
     }
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text(store.selected == .antigravity ? (store.agy?.manual == true ? "导入时间不代表源数据时间 · 重置时间按导入时刻估算" : "agy /usage · 每 5 分钟查询 · 已用 = 100% − 剩余") : "只读 Magpie 缓存 · 每分钟检查 · 不读取密钥")
+            Text(store.selected == .antigravity ? (store.agy?.manual == true ? "导入时间不代表源数据时间 · 重置时间按导入时刻估算" : "agy /usage · 失败后暂停自动查询 · 已用 = 100% − 剩余") : "只读 Magpie 缓存 · 每分钟检查 · 不读取密钥")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
             HStack {
-                Button { Task { await store.refresh(forceAGY: true) } } label: {
-                    Label(store.isRefreshing ? "读取中…" : store.selected == .antigravity ? "查询额度" : "重读缓存", systemImage: "arrow.clockwise")
-                }.disabled(store.isRefreshing).help("AGY 请求实时额度，其他工具重新读取 Magpie 本机缓存")
+                Button {
+                    if store.selected == .antigravity {
+                        checkAGYUsage()
+                    } else {
+                        Task { await store.refresh() }
+                    }
+                } label: {
+                    Label(store.isRefreshing ? "读取中…" : store.selected == .antigravity ? "检查 AGY 用量" : "重读缓存", systemImage: "arrow.clockwise")
+                }.disabled(store.isRefreshing).help("AGY 可能要求浏览器登录；失败后暂停自动查询，成功后每 5 分钟刷新")
                 Spacer()
                 Menu {
                     Button("选择 Magpie 缓存…") { store.chooseSource() }

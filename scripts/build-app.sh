@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export CLANG_MODULE_CACHE_PATH="${TMPDIR:-/tmp}/aibar-module-cache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$CLANG_MODULE_CACHE_PATH"
-VERSION="${AIBAR_VERSION:-0.1.0}"
+VERSION="${AIBAR_VERSION:-0.1.1}"
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   printf 'Invalid AIBAR_VERSION: expected major.minor.patch\n' >&2
   exit 1
@@ -13,6 +13,7 @@ APP="dist/AIbar.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/AIbar "$APP/Contents/MacOS/AIbar"
 cp LICENSE "$APP/Contents/Resources/LICENSE"
+cp Resources/AIbar.icns "$APP/Contents/Resources/AIbar.icns"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -23,6 +24,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleVersion</key><string>1</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleExecutable</key><string>AIbar</string>
+<key>CFBundleIconFile</key><string>AIbar</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
@@ -34,3 +36,15 @@ PLIST
 codesign --force --sign - "$APP"
 codesign --verify --strict "$APP"
 printf 'Built %s\n' "$APP"
+
+# Package the native build. Official releases run this only on Apple Silicon.
+ARCH="$(uname -m)"
+DMG_NAME="AIbar-${VERSION}-${ARCH}.dmg"
+DMG_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/aibar-dmg.XXXXXX")"
+trap 'rm -rf "$DMG_STAGE"' EXIT
+ditto "$APP" "$DMG_STAGE/AIbar.app"
+ln -s /Applications "$DMG_STAGE/Applications"
+hdiutil create -volname AIbar -srcfolder "$DMG_STAGE" -ov -format UDZO "dist/$DMG_NAME"
+hdiutil verify "dist/$DMG_NAME"
+(cd dist && shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256")
+printf 'Packaged dist/%s\n' "$DMG_NAME"

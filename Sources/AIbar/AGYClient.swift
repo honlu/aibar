@@ -1,13 +1,14 @@
 import Foundation
+import Darwin
 
 enum AGYClient {
     enum QueryError: LocalizedError {
         case notInstalled, workspaceNotConfigured, failed
         var errorDescription: String? {
             switch self {
-            case .notInstalled: "未找到 agy。请先安装并在终端完成登录和项目授权。"
-            case .workspaceNotConfigured: "请在设置中选择 AGY 工作目录，并先在终端进入该目录完成 agy 登录和项目授权。"
-            case .failed: "AGY 查询失败或超时。请在终端检查 agy 登录状态；上次读数已保留。"
+            case .notInstalled: "未找到 agy，请先安装 Antigravity CLI。"
+            case .workspaceNotConfigured: "请重新选择有效的 AGY 工作目录。"
+            case .failed: "AGY 查询失败或超时，上次读数已保留。"
             }
         }
     }
@@ -62,14 +63,21 @@ enum AGYClient {
         process.standardError = FileHandle.nullDevice
         try process.run()
         let timeout = DispatchWorkItem { if process.isRunning { process.terminate() } }
+        let forceStop = DispatchWorkItem {
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        }
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 30, execute: timeout)
-        defer { timeout.cancel() }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 32, execute: forceStop)
+        defer { timeout.cancel(); forceStop.cancel() }
         let data = await withTaskCancellationHandler {
             let output = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             return output
         } onCancel: {
             if process.isRunning { process.terminate() }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
         }
         try Task.checkCancellation()
         guard process.terminationStatus == 0, data.count <= 65_536,
